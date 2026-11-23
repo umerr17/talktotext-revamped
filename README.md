@@ -25,11 +25,20 @@ Put your logo at `public/logo.png`. If the file is missing, a text wordmark is s
 Every recording opens with three tabs:
 
 - **Summary & Notes** — the structured summary, plus **Rewrite notes** for an AI preview before saving.
-- **Full Transcript** — speaker labels and timestamps for new uploads, with search and a timeline.
+- **Full Transcript** — line-by-line timestamps built from AssemblyAI word timings, with search and a timeline.
 - **Ask AI** — a saved conversation grounded in this recording. Answers cite clickable timestamps.
 
-New uploads capture speaker labels and timestamped segments. Recordings processed before this feature
-still work, but they have no timestamps or timeline.
+New uploads store word-level timings and show them as short transcript lines. Recordings processed
+before this feature can be backfilled from AssemblyAI's stored transcripts (the script backs up the
+database first):
+
+```bash
+cd backend-talktotext-pro
+.venv/bin/python backfill_segments.py --apply
+```
+
+If no matching AssemblyAI transcript exists, the recording falls back to a plain transcript without
+timestamps.
 
 ### AI requirements
 

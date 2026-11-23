@@ -103,9 +103,9 @@ const formatTranscriptTimestamp = (milliseconds: number) => {
   const minutes = Math.floor((total % 3600) / 60);
   const seconds = total % 60;
   if (hours > 0) {
-    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   }
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 };
 
 export default function MeetingPage() {
@@ -179,7 +179,7 @@ export default function MeetingPage() {
     if (segments.length > 0) {
       return segments.map((segment) => ({
         id: String(segment.id),
-        speaker: segment.speaker ? `Speaker ${segment.speaker}` : "Speaker",
+        speaker: segment.speaker ? `Speaker ${segment.speaker}` : "Transcript",
         timestamp: formatTranscriptTimestamp(segment.start_ms),
         text: segment.text,
         confidence: segment.confidence ?? undefined,
@@ -191,7 +191,7 @@ export default function MeetingPage() {
       {
         id: "1",
         speaker: "Transcript",
-        timestamp: "00:00:00",
+        timestamp: "0:00",
         text: meeting.transcript,
         confidence: 0.98,
         startSeconds: 0,
@@ -205,7 +205,7 @@ export default function MeetingPage() {
       {
         id: "translated-1",
         speaker: "Transcript",
-        timestamp: "00:00:00",
+        timestamp: "0:00",
         text: meeting.transcript_en,
       },
     ];
@@ -519,7 +519,10 @@ export default function MeetingPage() {
                     />
                   </TabsContent>
                   <TabsContent value="translated">
-                    <TranscriptViewer transcript={translatedTranscript} />
+                    <TranscriptViewer
+                      transcript={translatedTranscript}
+                      noTimestampsMessage="Timestamps are available on the Original tab."
+                    />
                   </TabsContent>
                 </Tabs>
               ) : (

@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import { FileText, Search, Play, Pause, SkipBack, SkipForward, Volume2 } from "lucide-react"
 import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
@@ -23,6 +22,8 @@ interface TranscriptViewerProps {
   /** When this key changes, scroll to the segment closest to jumpToSeconds. */
   jumpToSeconds?: number | null
   jumpKey?: number
+  /** Shown above the transcript when hasTimestamps is false. */
+  noTimestampsMessage?: string
 }
 
 export function TranscriptViewer({
@@ -31,6 +32,7 @@ export function TranscriptViewer({
   hasTimestamps = false,
   jumpToSeconds = null,
   jumpKey = 0,
+  noTimestampsMessage = "Line-by-line timestamps aren't available for this recording. Re-upload it to add them.",
 }: TranscriptViewerProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [isPlaying, setIsPlaying] = useState(false)
@@ -45,6 +47,11 @@ export function TranscriptViewer({
       segment.text.toLowerCase().includes(searchTerm.toLowerCase()) ||
       segment.speaker.toLowerCase().includes(searchTerm.toLowerCase()),
   )
+
+  const speakerLabels = new Set(
+    transcript.map((segment) => segment.speaker).filter((speaker) => Boolean(speaker)),
+  )
+  const showSpeakers = speakerLabels.size > 1
 
   const getConfidenceColor = (confidence: number) => {
     if (confidence >= 0.95) return "bg-success"
@@ -61,6 +68,8 @@ export function TranscriptViewer({
   useEffect(() => {
     if (jumpToSeconds === null || jumpToSeconds === undefined) return
 
+    if (searchTerm) setSearchTerm("")
+
     const timedSegments = transcript.filter((segment) => typeof segment.startSeconds === "number")
     if (timedSegments.length === 0) return
 
@@ -75,11 +84,16 @@ export function TranscriptViewer({
       }
     }
 
-    const element = segmentRefs.current[closest.id]
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth", block: "center" })
-      highlightSegment(closest.id)
-    }
+    // Wait briefly so clearing the search has restored every row before scrolling.
+    const timeout = window.setTimeout(() => {
+      const element = segmentRefs.current[closest.id]
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth", block: "center" })
+        highlightSegment(closest.id)
+      }
+    }, 50)
+
+    return () => window.clearTimeout(timeout)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpKey, jumpToSeconds])
 
@@ -91,13 +105,28 @@ export function TranscriptViewer({
 
   const handlePlayPause = () => {
     setIsPlaying(!isPlaying)
-    // In a real app, this would control audio playback
   }
 
   const jumpToTimestamp = (segment: TranscriptSegment) => {
     setCurrentTime(segment.timestamp)
     highlightSegment(segment.id)
     segmentRefs.current[segment.id]?.scrollIntoView({ behavior: "smooth", block: "center" })
+  }
+
+  const renderHighlightedText = (text: string) => {
+    const query = searchTerm.trim()
+    if (!query) return text
+
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    return text.split(new RegExp(`(${escaped})`, "gi")).map((part, index) =>
+      part.toLowerCase() === query.toLowerCase() ? (
+        <mark key={index} className="rounded bg-primary/20 px-0.5 text-foreground">
+          {part}
+        </mark>
+      ) : (
+        part
+      ),
+    )
   }
 
   return (
@@ -148,13 +177,13 @@ export function TranscriptViewer({
                 </CardTitle>
                 <CardDescription>
                   {hasTimestamps
-                    ? "Speaker-aware transcript with exact timestamps. Search it or jump from a chat citation."
+                    ? "Transcript with line-by-line timestamps. Search it or jump from a chat citation."
                     : "AI-generated transcript of the recording."}
                 </CardDescription>
               </div>
               <div className="flex items-center space-x-2">
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     placeholder="Search transcript..."
                     value={searchTerm}
@@ -166,72 +195,76 @@ export function TranscriptViewer({
             </div>
           </CardHeader>
           <CardContent>
+            {!hasTimestamps && (
+              <div className="mb-3 rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                {noTimestampsMessage}
+              </div>
+            )}
             <div className="h-[600px] w-full overflow-y-auto pr-2">
-              <div className="space-y-4">
-                {filteredTranscript.map((segment, index) => (
-                  <motion.div
-                    key={segment.id}
-                    ref={(element) => {
-                      segmentRefs.current[segment.id] = element
-                    }}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.3, delay: Math.min(index, 10) * 0.05 }}
-                    className={cn(
-                      "group rounded-xl border bg-muted/20 p-4 transition-colors hover:bg-muted/50",
-                      highlightedId === segment.id &&
-                        "border-primary/40 bg-primary/5 ring-2 ring-primary/30",
-                    )}
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center space-x-3">
-                        <Badge variant="outline" className="font-medium">
-                          {segment.speaker}
-                        </Badge>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-xs text-muted-foreground hover:text-primary"
-                          onClick={() => jumpToTimestamp(segment)}
-                        >
-                          {segment.timestamp}
-                        </Button>
-                      </div>
-                      {typeof segment.confidence === "number" && segment.confidence > 0 && (
-                        <div className="flex items-center space-x-2">
-                          <div
-                            className={`h-2 w-2 rounded-full ${getConfidenceColor(segment.confidence)}`}
-                            title={`Confidence: ${(segment.confidence * 100).toFixed(1)}%`}
-                          />
-                          <span className="text-xs text-muted-foreground">
-                            {(segment.confidence * 100).toFixed(1)}%
+              <div className="divide-y divide-border/50">
+                {filteredTranscript.map((segment) => {
+                  const lowConfidence =
+                    typeof segment.confidence === "number" &&
+                    segment.confidence > 0 &&
+                    segment.confidence < 0.9
+
+                  return (
+                    <div
+                      key={segment.id}
+                      ref={(element) => {
+                        segmentRefs.current[segment.id] = element
+                      }}
+                      className={cn(
+                        "group flex scroll-mt-6 gap-3 rounded-lg px-2 py-3 transition-colors hover:bg-muted/40",
+                        highlightedId === segment.id &&
+                          "bg-primary/5 ring-1 ring-primary/30",
+                      )}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => jumpToTimestamp(segment)}
+                        title={`Jump to ${segment.timestamp}`}
+                        aria-label={`Jump to ${segment.timestamp}`}
+                        className="mt-0.5 w-16 shrink-0 rounded px-1 py-0.5 text-left font-mono text-xs tabular-nums text-primary transition-colors hover:bg-primary/10"
+                      >
+                        {segment.timestamp}
+                      </button>
+
+                      <div className="min-w-0 flex-1">
+                        {showSpeakers && segment.speaker && (
+                          <span className="mb-1 inline-block rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                            {segment.speaker}
                           </span>
-                        </div>
+                        )}
+                        <p className="whitespace-pre-wrap leading-7 text-foreground">
+                          {renderHighlightedText(segment.text)}
+                        </p>
+                      </div>
+
+                      {lowConfidence && (
+                        <span
+                          className={cn(
+                            "mt-2 h-1.5 w-1.5 shrink-0 rounded-full",
+                            getConfidenceColor(segment.confidence as number),
+                          )}
+                          title={`Low confidence: ${((segment.confidence as number) * 100).toFixed(0)}%`}
+                        />
                       )}
                     </div>
-                    <p className="leading-7 text-foreground whitespace-pre-wrap">
-                      {searchTerm
-                        ? segment.text.split(new RegExp(`(${searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi")).map((part, i) =>
-                            part.toLowerCase() === searchTerm.toLowerCase() ? (
-                              <mark key={i} className="rounded bg-primary/20 px-0.5 text-foreground">
-                                {part}
-                              </mark>
-                            ) : (
-                              part
-                            ),
-                          )
-                        : segment.text}
-                    </p>
-                  </motion.div>
-                ))}
+                  )
+                })}
               </div>
             </div>
             {filteredTranscript.length === 0 && (
-              <div className="text-center py-8">
-                <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No results found</h3>
+              <div className="py-8 text-center">
+                <FileText className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+                <h3 className="mb-2 text-lg font-semibold">
+                  {searchTerm ? "No results found" : "Transcript unavailable"}
+                </h3>
                 <p className="text-muted-foreground">
-                  Try adjusting your search terms or clear the search to view all transcript segments.
+                  {searchTerm
+                    ? "Try adjusting your search terms or clear the search to view all transcript lines."
+                    : "This recording doesn't have a transcript yet."}
                 </p>
               </div>
             )}
