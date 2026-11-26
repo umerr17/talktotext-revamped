@@ -1,4 +1,6 @@
 // lib/api.ts
+import type { NotesLength } from "@/lib/notes-preferences";
+
 export interface Meeting {
   id: number;
   user_id: number;
@@ -137,14 +139,23 @@ export const clearChatMessages = (meetingId: string | number): Promise<void> =>
   authFetch(`/meetings/${meetingId}/chat`, { method: "DELETE" });
 
 // === Notes rewrite ===
+export interface NotesRewritePayload {
+  instructions: string;
+  length?: NotesLength;
+  language?: string;
+  focus?: string;
+}
+
 export const rewriteMeetingNotes = (
   meetingId: string | number,
-  instructions: string,
-): Promise<{ notes: string }> =>
-  authFetch(`/meetings/${meetingId}/notes/rewrite`, {
+  payload: NotesRewritePayload | string,
+): Promise<{ notes: string }> => {
+  const body = typeof payload === "string" ? { instructions: payload } : payload;
+  return authFetch(`/meetings/${meetingId}/notes/rewrite`, {
     method: "POST",
-    body: JSON.stringify({ instructions }),
+    body: JSON.stringify(body),
   });
+};
 
 export const applyMeetingNotes = (
   meetingId: string | number,

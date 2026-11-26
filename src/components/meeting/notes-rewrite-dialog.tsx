@@ -11,8 +11,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { NotesPreferences } from "@/components/notes/notes-preferences";
 import { useToast } from "@/hooks/use-toast";
 import { applyMeetingNotes, rewriteMeetingNotes } from "@/lib/api";
+import {
+  DEFAULT_NOTES_LANGUAGE,
+  DEFAULT_NOTES_LENGTH,
+  type NotesLength,
+} from "@/lib/notes-preferences";
 
 interface NotesRewriteDialogProps {
   meetingId: string | number;
@@ -21,9 +27,17 @@ interface NotesRewriteDialogProps {
   onApplied: (notes: string) => void;
 }
 
-const PRESETS = [
-  { label: "Shorter", instruction: "Make the notes significantly shorter and easier to scan." },
-  { label: "More detail", instruction: "Add more detail and context to every section, using the transcript." },
+const PRESETS: Array<{ label: string; instruction: string; length?: NotesLength }> = [
+  {
+    label: "Shorter",
+    instruction: "Make the notes significantly shorter and easier to scan.",
+    length: "short",
+  },
+  {
+    label: "More detail",
+    instruction: "Add more detail and context to every section, using the transcript.",
+    length: "long",
+  },
   {
     label: "Focus on action items",
     instruction:
@@ -48,6 +62,8 @@ export function NotesRewriteDialog({
 }: NotesRewriteDialogProps) {
   const { toast } = useToast();
   const [instructions, setInstructions] = useState("");
+  const [length, setLength] = useState<NotesLength>(DEFAULT_NOTES_LENGTH);
+  const [language, setLanguage] = useState(DEFAULT_NOTES_LANGUAGE);
   const [preview, setPreview] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
@@ -56,6 +72,8 @@ export function NotesRewriteDialog({
   useEffect(() => {
     if (open) {
       setInstructions("");
+      setLength(DEFAULT_NOTES_LENGTH);
+      setLanguage(DEFAULT_NOTES_LANGUAGE);
       setPreview(null);
       setIsLoading(false);
       setIsApplying(false);
@@ -68,7 +86,11 @@ export function NotesRewriteDialog({
     setError(null);
     setPreview(null);
     try {
-      const result = await rewriteMeetingNotes(meetingId, instructions.trim());
+      const result = await rewriteMeetingNotes(meetingId, {
+        instructions: instructions.trim(),
+        length,
+        language,
+      });
       setPreview(result.notes);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not rewrite the notes. Please try again.");
@@ -107,18 +129,33 @@ export function NotesRewriteDialog({
             Rewrite meeting notes
           </DialogTitle>
           <DialogDescription>
-            Tell the AI what to change. You&apos;ll see a preview first, and nothing is saved until you
-            click Apply.
+            Choose the size and language, then tell the AI what to change. You&apos;ll see a preview
+            first, and nothing is saved until you click Apply.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
+          <div className="rounded-lg border bg-muted/20 p-3">
+            <NotesPreferences
+              length={length}
+              language={language}
+              onLengthChange={setLength}
+              onLanguageChange={setLanguage}
+              showFocus={false}
+              disabled={busy}
+              idPrefix="rewrite"
+            />
+          </div>
+
           <div className="flex flex-wrap gap-2">
             {PRESETS.map((preset) => (
               <button
                 key={preset.label}
                 type="button"
-                onClick={() => setInstructions(preset.instruction)}
+                onClick={() => {
+                  setInstructions(preset.instruction);
+                  if (preset.length) setLength(preset.length);
+                }}
                 disabled={busy}
                 className="rounded-full border bg-background px-3 py-1.5 text-xs transition-colors hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
               >

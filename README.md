@@ -24,9 +24,19 @@ Put your logo at `public/logo.png`. If the file is missing, a text wordmark is s
 
 Every recording opens with three tabs:
 
-- **Summary & Notes** — the structured summary, plus **Rewrite notes** for an AI preview before saving.
+- **Summary & Notes** — structured notes with a separate Meeting Category card and a sentiment summary
+  (overall tone plus evidence, never an arbitrary score), plus **Rewrite notes** for an AI preview
+  before saving.
 - **Full Transcript** — line-by-line timestamps built from AssemblyAI word timings, with search and a timeline.
 - **Ask AI** — a saved conversation grounded in this recording. Answers cite clickable timestamps.
+
+### Notes preferences
+
+Before uploading, choose **Short**, **Medium**, or **Long** notes, the notes language, and an
+optional focus (for example, "decisions and next steps"). The same controls appear in
+**Rewrite notes**. Notes never contain timestamps; the six section headings stay in English so the
+app can parse them, while the note content is written in the selected language. Sentiment is shown
+as **Positive**, **Neutral**, or **Negative** with 2–3 evidence-based insights, never a percentage.
 
 New uploads store word-level timings and show them as short transcript lines. Recordings processed
 before this feature can be backfilled from AssemblyAI's stored transcripts (the script backs up the
@@ -43,7 +53,11 @@ timestamps.
 ### AI requirements
 
 Ask AI, note rewriting, and timelines use Gemini through the backend. Set `GOOGLE_API_KEY` in the
-backend `.env`; the default model is `gemini-2.5-flash`. Restart the backend after deploying so the
+backend `.env`; the default chat model is `gemini-2.5-flash`. If its free quota runs out, requests
+automatically fall back to `gemini-3.5-flash`, `gemini-3.5-flash-lite`, then
+`gemini-3.1-flash-lite`, so chat keeps working. Override the chain with `CHAT_FALLBACK_MODELS`
+(comma-separated); notes use `NOTES_FALLBACK_MODELS`. Timelines use `CHAPTERS_MODEL` (default
+`gemini-3.5-flash-lite`) with `CHAPTERS_FALLBACK_MODELS`. Restart the backend after deploying so the
 new chat, segment and chapter tables are created automatically. On Google's free tier, transcripts
 may be used to improve Google products, so only use it with recordings you are comfortable sharing.
 

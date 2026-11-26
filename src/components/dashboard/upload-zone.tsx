@@ -9,6 +9,12 @@ import { cn } from "@/lib/utils";
 import { UploadCloud, FileAudio, X, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { getOngoingTasks, deleteTask } from "@/lib/api";
+import { NotesPreferences } from "@/components/notes/notes-preferences";
+import {
+  DEFAULT_NOTES_LANGUAGE,
+  DEFAULT_NOTES_LENGTH,
+  type NotesLength,
+} from "@/lib/notes-preferences";
 
 interface UploadFile {
   id: string;
@@ -46,6 +52,9 @@ const SmoothedProgress = ({ targetProgress }: { targetProgress: number }) => {
 
 export function UploadZone() {
   const [files, setFiles] = useState<UploadFile[]>([]);
+  const [notesLength, setNotesLength] = useState<NotesLength>(DEFAULT_NOTES_LENGTH);
+  const [notesLanguage, setNotesLanguage] = useState(DEFAULT_NOTES_LANGUAGE);
+  const [notesFocus, setNotesFocus] = useState("");
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -143,6 +152,11 @@ export function UploadZone() {
 
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("notes_length", notesLength);
+      formData.append("notes_language", notesLanguage);
+      if (notesFocus.trim()) {
+        formData.append("notes_focus", notesFocus.trim());
+      }
 
       const res = await axios.post(`${import.meta.env.VITE_API_URL}/upload-audio`, formData, {
         headers: { Authorization: `Bearer ${token}` },
@@ -192,7 +206,7 @@ export function UploadZone() {
       setFiles(prev => [errorFile, ...prev]);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [notesLength, notesLanguage, notesFocus]);
 
   const removeFile = async (fileId: string) => {
     const fileToRemove = files.find(f => f.id === fileId);
@@ -220,6 +234,25 @@ export function UploadZone() {
 
   return (
     <div className="space-y-5">
+      <div className="rounded-2xl border bg-card p-4 shadow-[var(--shadow-soft)] sm:p-5">
+        <div className="mb-4">
+          <h3 className="text-sm font-semibold">Notes preferences</h3>
+          <p className="text-xs text-muted-foreground">
+            Choose how your notes are written. These settings apply to every file you upload, and
+            you can change them later with Rewrite notes.
+          </p>
+        </div>
+        <NotesPreferences
+          length={notesLength}
+          language={notesLanguage}
+          focus={notesFocus}
+          onLengthChange={setNotesLength}
+          onLanguageChange={setNotesLanguage}
+          onFocusChange={setNotesFocus}
+          idPrefix="upload"
+        />
+      </div>
+
       <div
         {...getRootProps()}
         className={cn(

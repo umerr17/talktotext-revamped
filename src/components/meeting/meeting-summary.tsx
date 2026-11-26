@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Brain, Users, Clock, Calendar, CheckCircle, TrendingUp, MessageSquare, Target, Lightbulb } from "lucide-react"
+import { Brain, Users, Clock, Calendar, CheckCircle, TrendingUp, MessageSquare, Target, Lightbulb, Tag } from "lucide-react"
 import { motion } from "framer-motion"
 
 interface MeetingSummaryProps {
@@ -21,9 +21,9 @@ interface MeetingSummaryProps {
       priority: "high" | "medium" | "low"
     }>
     decisions: string[]
+    category: string
     sentiment: {
       overall: "positive" | "neutral" | "negative"
-      score: number
       insights: string[]
     }
   }
@@ -90,7 +90,7 @@ export function MeetingSummary({ meeting }: MeetingSummaryProps) {
               <div className="flex items-center space-x-2">
                 <TrendingUp className="h-4 w-4 text-muted-foreground" />
                 <span className={`text-sm px-2 py-1 rounded-full ${getSentimentColor(meeting.sentiment.overall)}`}>
-                  {meeting.sentiment.overall} ({meeting.sentiment.score}%)
+                  {meeting.sentiment.overall.charAt(0).toUpperCase() + meeting.sentiment.overall.slice(1)}
                 </span>
               </div>
             </div>
@@ -164,10 +164,12 @@ export function MeetingSummary({ meeting }: MeetingSummaryProps) {
                     <div className={`h-3 w-3 rounded-full ${getPriorityColor(item.priority)}`} />
                     <div>
                       <p className="font-medium text-sm">{item.task}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {item.assignee}
-                        {!Number.isNaN(new Date(item.dueDate).getTime()) && ` • Due ${new Date(item.dueDate).toLocaleDateString()}`}
-                      </p>
+                      {(item.assignee !== "Unassigned" || item.dueDate !== "N/A") && (
+                        <p className="text-xs text-muted-foreground">
+                          {item.assignee !== "Unassigned" ? item.assignee : "Unassigned"}
+                          {item.dueDate !== "N/A" && ` • Due ${item.dueDate}`}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <Badge variant="outline" className="capitalize">
@@ -206,11 +208,32 @@ export function MeetingSummary({ meeting }: MeetingSummaryProps) {
         </Card>
       </motion.div>
 
-      {/* Sentiment Analysis */}
+      {/* Meeting Category */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.25 }}
+      >
+        <Card className="glass">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Tag className="h-5 w-5 text-primary" />
+              Meeting Category
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Badge variant="secondary" className="px-3 py-1 text-sm">
+              {meeting.category || "General"}
+            </Badge>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Sentiment Analysis */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.3 }}
       >
         <Card className="glass">
           <CardHeader>
@@ -226,21 +249,26 @@ export function MeetingSummary({ meeting }: MeetingSummaryProps) {
                 <div
                   className={`px-3 py-1 rounded-full text-sm font-medium ${getSentimentColor(meeting.sentiment.overall)}`}
                 >
-                  {meeting.sentiment.overall.charAt(0).toUpperCase() + meeting.sentiment.overall.slice(1)} (
-                  {meeting.sentiment.score}%)
+                  {meeting.sentiment.overall.charAt(0).toUpperCase() + meeting.sentiment.overall.slice(1)}
                 </div>
               </div>
               <Separator />
               <div>
                 <h4 className="text-sm font-medium mb-3">Key Insights</h4>
-                <ul className="space-y-2">
-                  {meeting.sentiment.insights.map((insight, index) => (
-                    <li key={index} className="flex items-start space-x-2">
-                      <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground mt-2 flex-shrink-0" />
-                      <span className="text-sm text-muted-foreground">{insight}</span>
-                    </li>
-                  ))}
-                </ul>
+                {meeting.sentiment.insights.length > 0 ? (
+                  <ul className="space-y-2">
+                    {meeting.sentiment.insights.map((insight, index) => (
+                      <li key={index} className="flex items-start space-x-2">
+                        <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground mt-2 flex-shrink-0" />
+                        <span className="text-sm text-muted-foreground">{insight}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No specific sentiment insights were captured for this recording.
+                  </p>
+                )}
               </div>
             </div>
           </CardContent>
@@ -252,7 +280,7 @@ export function MeetingSummary({ meeting }: MeetingSummaryProps) {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.3 }}
+        transition={{ duration: 0.4, delay: 0.35 }}
       >
         <Card className="glass">
           <CardHeader>

@@ -28,6 +28,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 
+type SentimentOverall = "positive" | "neutral" | "negative";
+
 // A type for the parsed, structured notes
 type ParsedNotes = {
     id: string;
@@ -39,62 +41,166 @@ type ParsedNotes = {
     keyPoints: string[];
     actionItems: { id: string; task: string; assignee: string; dueDate: string; priority: "high" | "medium" | "low"; }[];
     decisions: string[];
-    sentiment: { overall: "positive" | "neutral" | "negative"; score: number; insights: string[]; };
+    category: string;
+    sentiment: { overall: SentimentOverall; insights: string[]; };
+};
+
+const stripNoteTimestamps = (text: string) =>
+    text
+        .replace(/\[\d{1,2}:\d{2}(?::\d{2})?\]/g, "")
+        .replace(/\((?:at\s+|around\s+|from\s+)?\d{1,2}:\d{2}(?::\d{2})?\)/gi, "")
+        .replace(/^\s*\d{1,2}:\d{2}(?::\d{2})?\s*[-–—:]\s*/, "")
+        .replace(/\s+([.,;:!?])/g, "$1")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+
+const buildActionItem = (text: string): ParsedNotes["actionItems"][number] => {
+    let task = text.trim();
+    let assignee = "Unassigned";
+    let dueDate = "N/A";
+
+    const ownerMatch = task.match(/^(?:owner|assignee)\s*[:\-]\s*([^,;|]+?)(?:\s*[-–—]\s*|\s*$)/i);
+    if (ownerMatch) {
+        assignee = ownerMatch[1].trim();
+        task = task.replace(ownerMatch[0], "").trim();
+    } else {
+        const nameMatch = task.match(/^([A-Z][a-zA-Z.'-]*(?:\s+[A-Z][a-zA-Z.'-]*){0,2})\s*[:\-–—]\s+(.+)$/);
+        if (nameMatch) {
+            assignee = nameMatch[1].trim();
+            task = nameMatch[2].trim();
+        }
+    }
+
+    const dueMatch = task.match(/\b(?:by|due|before)\s+([^,;.]+)/i);
+    if (dueMatch) {
+        dueDate = dueMatch[1].trim();
+    }
+
+    return {
+        id: Math.random().toString(),
+        task: task || text,
+        assignee,
+        dueDate,
+        priority: "medium",
+    };
+};
+
+const inferSentiment = (text: string): SentimentOverall => {
+    const lowered = text.toLowerCase();
+    const positiveSignals = [
+        "positive", "encourag", "appreciat", "accomplish", "enthusiast", "informative",
+        "confident", "success", "helpful", "inspiring", "practical", "strong", "optimistic",
+    ];
+    const negativeSignals = [
+        "negative", "frustrat", "concern", "disappoint", "fail", "conflict", "stress",
+        "angry", "anxiety", "pessimistic", "hostile",
+    ];
+    let score = 0;
+    positiveSignals.forEach((word) => { if (lowered.includes(word)) score += 1; });
+    negativeSignals.forEach((word) => { if (lowered.includes(word)) score -= 1; });
+    if (score > 0) return "positive";
+    if (score < 0) return "negative";
+    return "neutral";
 };
 
 // This utility parses the raw notes text from the backend into a structured object
 const parseMeetingNotes = (meeting: MeetingData): ParsedNotes => {
-    const notes = meeting.notes;
-    const lines = notes.split('\n').filter(line => line.trim() !== '');
+    const notes = meeting.notes || "";
+    const lines = notes.split('\n');
 
-    const parsed: Partial<ParsedNotes> & { sentiment: { insights: string[] } } = {
+    const parsed: ParsedNotes = {
+        id: meeting.id.toString(),
+        title: meeting.title || 'Meeting Notes',
+        date: new Date(meeting.created_at).toISOString(),
+        duration: "N/A",
+        participants: [],
+        summary: "",
         keyPoints: [],
         actionItems: [],
         decisions: [],
-        sentiment: { overall: 'neutral', score: 0, insights: [] },
-        participants: [],
-        duration: "N/A"
+        category: "",
+        sentiment: { overall: 'neutral', insights: [] },
     };
     let currentSection = '';
+    let sentimentLabelFound = false;
+    const categoryLines: string[] = [];
 
-    for (const line of lines) {
-        if (line.match(/^#+\s*Executive Summary/i)) { currentSection = 'summary'; }
-        else if (line.match(/^#+\s*Key Discussion Points/i)) { currentSection = 'keyPoints'; }
-        else if (line.match(/^#+\s*Decisions Made/i)) { currentSection = 'decisions'; }
-        else if (line.match(/^#+\s*Action Items/i)) { currentSection = 'actionItems'; }
-        else if (line.match(/^#+\s*Sentiment Analysis/i)) { currentSection = 'sentiment'; }
-        else {
-            const cleanLine = line.replace(/^-|\*|\d+\.\s*/g, '').trim();
-            if (!cleanLine) continue;
+    for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line) continue;
 
-            switch (currentSection) {
-                case 'summary': parsed.summary = (parsed.summary || "") + cleanLine + " "; break;
-                case 'keyPoints': parsed.keyPoints?.push(cleanLine); break;
-                case 'decisions': parsed.decisions?.push(cleanLine); break;
-                case 'actionItems': parsed.actionItems?.push({ id: Math.random().toString(), task: cleanLine, assignee: 'Unassigned', dueDate: 'N/A', priority: 'medium' }); break;
-                case 'sentiment':
-                     if (cleanLine.toLowerCase().includes('positive')) parsed.sentiment!.overall = 'positive';
-                     else if (cleanLine.toLowerCase().includes('neutral')) parsed.sentiment!.overall = 'neutral';
-                     else if (cleanLine.toLowerCase().includes('negative')) parsed.sentiment!.overall = 'negative';
-                     parsed.sentiment!.insights.push(cleanLine);
+        if (/^#+\s*Executive Summary/i.test(line)) { currentSection = 'summary'; continue; }
+        if (/^#+\s*Key Discussion Points/i.test(line)) { currentSection = 'keyPoints'; continue; }
+        if (/^#+\s*Decisions Made/i.test(line)) { currentSection = 'decisions'; continue; }
+        if (/^#+\s*Action Items/i.test(line)) { currentSection = 'actionItems'; continue; }
+        if (/^#+\s*Sentiment Analysis/i.test(line)) { currentSection = 'sentiment'; continue; }
+        if (/^#+\s*Meeting Category/i.test(line)) { currentSection = 'category'; continue; }
+        if (/^#+\s*/.test(line)) { currentSection = ''; continue; }
+
+        const cleanLine = stripNoteTimestamps(
+            line
+                .replace(/^[-*•]\s+/, '')
+                .replace(/^\d+\.\s+/, '')
+                .replace(/^\[[ xX]\]\s*/, '')
+                .replace(/^\*\*(.*?)\*\*:?\s*/, '$1: '),
+        );
+        if (!cleanLine) continue;
+
+        switch (currentSection) {
+            case 'summary':
+                parsed.summary = (parsed.summary ? `${parsed.summary} ` : "") + cleanLine;
+                break;
+            case 'keyPoints':
+                parsed.keyPoints.push(cleanLine);
+                break;
+            case 'decisions':
+                parsed.decisions.push(cleanLine);
+                break;
+            case 'actionItems':
+                parsed.actionItems.push(buildActionItem(cleanLine));
+                break;
+            case 'sentiment': {
+                const overallMatch = cleanLine.match(
+                    /^overall\s*[:\-]\s*(positive|neutral|negative)\b[\s:.\-–—]*(.*)$/i,
+                );
+                if (overallMatch) {
+                    parsed.sentiment.overall = overallMatch[1].toLowerCase() as SentimentOverall;
+                    sentimentLabelFound = true;
+                    if (overallMatch[2].trim()) parsed.sentiment.insights.push(overallMatch[2].trim());
                     break;
+                }
+                const leadingMatch = cleanLine.match(
+                    /^(positive|neutral|negative)\b[\s:.\-–—]*(.*)$/i,
+                );
+                if (!sentimentLabelFound && leadingMatch) {
+                    parsed.sentiment.overall = leadingMatch[1].toLowerCase() as SentimentOverall;
+                    sentimentLabelFound = true;
+                    if (leadingMatch[2].trim()) parsed.sentiment.insights.push(leadingMatch[2].trim());
+                    break;
+                }
+                parsed.sentiment.insights.push(cleanLine);
+                break;
             }
+            case 'category':
+                categoryLines.push(cleanLine);
+                break;
         }
     }
-    
-    // De-duplicate any repeated sections from AI output
-    if (parsed.keyPoints) parsed.keyPoints = [...new Set(parsed.keyPoints)];
-    if (parsed.decisions) parsed.decisions = [...new Set(parsed.decisions)];
-    if (parsed.actionItems) {
-        const uniqueTasks = new Map();
-        parsed.actionItems.forEach(item => uniqueTasks.set(item.task, item));
-        parsed.actionItems = Array.from(uniqueTasks.values());
-    }
 
-    parsed.title = meeting.title || 'Meeting Notes';
-    parsed.id = meeting.id.toString();
-    parsed.date = new Date(meeting.created_at).toISOString();
-    return parsed as ParsedNotes;
+    if (!sentimentLabelFound) {
+        parsed.sentiment.overall = inferSentiment(parsed.sentiment.insights.join(" "));
+    }
+    parsed.category = categoryLines.join(" ").replace(/[.。]+$/, "").trim();
+
+    // De-duplicate any repeated sections from AI output
+    parsed.keyPoints = [...new Set(parsed.keyPoints)];
+    parsed.decisions = [...new Set(parsed.decisions)];
+    parsed.sentiment.insights = [...new Set(parsed.sentiment.insights)];
+    const uniqueTasks = new Map<string, ParsedNotes["actionItems"][number]>();
+    parsed.actionItems.forEach((item) => uniqueTasks.set(item.task, item));
+    parsed.actionItems = Array.from(uniqueTasks.values());
+
+    return parsed;
 };
 
 const formatTranscriptTimestamp = (milliseconds: number) => {
@@ -336,7 +442,19 @@ export default function MeetingPage() {
     renderSection('Executive Summary', parsedNotes.summary);
     renderSection('Key Discussion Points', parsedNotes.keyPoints);
     renderSection('Decisions Made', parsedNotes.decisions);
-    renderSection('Action Items', parsedNotes.actionItems.map(item => item.task));
+    renderSection(
+      'Action Items',
+      parsedNotes.actionItems.map((item) => {
+        const owner = item.assignee !== 'Unassigned' ? ` — ${item.assignee}` : '';
+        const due = item.dueDate !== 'N/A' ? ` (due ${item.dueDate})` : '';
+        return `${item.task}${owner}${due}`;
+      }),
+    );
+    renderSection('Sentiment Analysis', [
+      `Overall: ${parsedNotes.sentiment.overall.charAt(0).toUpperCase() + parsedNotes.sentiment.overall.slice(1)}`,
+      ...parsedNotes.sentiment.insights,
+    ]);
+    renderSection('Meeting Category', parsedNotes.category || 'General');
 
     doc.save(`${parsedNotes?.title || 'meeting-notes'}.pdf`);
   };
@@ -355,7 +473,17 @@ export default function MeetingPage() {
                   new Paragraph({ text: "Decisions Made", heading: HeadingLevel.HEADING_1 }),
                   ...parsedNotes.decisions.map(d => new Paragraph({ text: d, bullet: { level: 0 } })),
                   new Paragraph({ text: "Action Items", heading: HeadingLevel.HEADING_1 }),
-                  ...parsedNotes.actionItems.map(a => new Paragraph({ text: `${a.task} (Assignee: ${a.assignee})`, bullet: { level: 0 } })),
+                  ...parsedNotes.actionItems.map(a => new Paragraph({
+                    text: `${a.task}${a.assignee !== 'Unassigned' ? ` — ${a.assignee}` : ''}${a.dueDate !== 'N/A' ? ` (due ${a.dueDate})` : ''}`,
+                    bullet: { level: 0 },
+                  })),
+                  new Paragraph({ text: "Sentiment Analysis", heading: HeadingLevel.HEADING_1 }),
+                  new Paragraph({
+                    text: `Overall: ${parsedNotes.sentiment.overall.charAt(0).toUpperCase() + parsedNotes.sentiment.overall.slice(1)}`,
+                  }),
+                  ...parsedNotes.sentiment.insights.map(insight => new Paragraph({ text: insight, bullet: { level: 0 } })),
+                  new Paragraph({ text: "Meeting Category", heading: HeadingLevel.HEADING_1 }),
+                  new Paragraph({ text: parsedNotes.category || "General" }),
               ],
           }],
       });
